@@ -24,12 +24,16 @@ import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Module;
 import com.google.inject.spi.Message;
+import io.airlift.configuration.validation.FileExists;
 import org.testng.annotations.Test;
 
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 
+import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -275,6 +279,55 @@ public class TestConfigurationFactory
                 ImmutableMap.of("int-value", "abc %s xyz"), // not an int
                 binder -> configBinder(binder).bindConfig(BeanValidationClass.class),
                 ".*Invalid value 'abc %s xyz' for type int \\(property 'int-value'\\).*BeanValidationClass.*");
+    }
+
+    @Test
+    public void testSuccessfulFileExistsValidation()
+    {
+        Map<String, String> properties = new HashMap<>();
+        properties.put("file1", "./pom.xml");
+        properties.put("file2", "./pom.xml");
+        properties.put("file3", "./pom.xml");
+        TestMonitor monitor = new TestMonitor();
+        Injector injector = createInjector(properties, monitor, binder -> configBinder(binder).bindConfig(FileExistsValidationClass.class));
+        FileExistsValidationClass fileExistsValidationClass = injector.getInstance(FileExistsValidationClass.class);
+        monitor.assertNumberOfErrors(0);
+        monitor.assertNumberOfWarnings(0);
+        assertNotNull(fileExistsValidationClass);
+        assertEquals(fileExistsValidationClass.getFile1(), "./pom.xml");
+        assertEquals(fileExistsValidationClass.getFile2(), Paths.get("./pom.xml"));
+        assertEquals(fileExistsValidationClass.getFile3(), new File("./pom.xml"));
+    }
+
+    @Test
+    public void testFailedFileExistsValidation()
+    {
+        assertInvalidConfig(
+                ImmutableMap.of(
+                        "file1", "./does/not.exists",
+                        "file2", "./does/not.exists.either",
+                        "file3", "./not.here"
+                ),
+                binder -> configBinder(binder).bindConfig(FileExistsValidationClass.class),
+                ImmutableList.of(
+                        ".*Invalid configuration property file3: file './not.here' does not exist.*FileExistsValidationClass.*",
+                        ".*Invalid configuration property file1: file './does/not.exists' does not exist.*FileExistsValidationClass.*",
+                        ".*Invalid configuration property file2: file './does/not.exists.either' does not exist.*FileExistsValidationClass.*"
+                ),
+                ImmutableList.of()
+        );
+    }
+
+    @Test
+    public void testFailedFileExistsValidationOfUnknownType()
+    {
+        assertInvalidConfig(
+                ImmutableMap.of(
+                        "file1", "ignored"
+                ),
+                binder -> configBinder(binder).bindConfig(FileExistsValidationClass2.class),
+                ".*Invalid configuration property file1: could not validate value of type Integer.*FileExistsValidationClass2.*"
+        );
     }
 
     @Test
@@ -641,6 +694,73 @@ public class TestConfigurationFactory
         public void setIntValue(int value)
         {
             this.myIntValue = value;
+        }
+    }
+
+    public static class FileExistsValidationClass
+    {
+        @NotNull
+        private String file1;
+
+        @NotNull
+        private Path file2;
+
+        @NotNull
+        private File file3;
+
+        @FileExists
+        public String getFile1()
+        {
+            return file1;
+        }
+
+        @Config("file1")
+        public void setFile1(String value)
+        {
+            this.file1 = value;
+        }
+
+        @FileExists
+        public Path getFile2()
+        {
+            return file2;
+        }
+
+        @Config("file2")
+        public void setFile2(String value)
+        {
+            this.file2 = Paths.get(value);
+        }
+
+        @FileExists
+        public File getFile3()
+        {
+            return file3;
+        }
+
+        @Config("file3")
+        public void setFile3(File value)
+        {
+            this.file3 = value;
+        }
+    }
+
+    public static class FileExistsValidationClass2
+    {
+        @NotNull
+        private String file1;
+
+        @FileExists
+        public Integer getFile1()
+        {
+            // On purpose return invalid value
+            return 1337;
+        }
+
+        @Config("file1")
+        public void setFile1(String value)
+        {
+            this.file1 = value;
         }
     }
 
