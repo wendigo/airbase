@@ -3,7 +3,7 @@
 
     <groupId>io.airlift</groupId>
     <artifactId>airbase-root</artifactId>
-    <version>240-SNAPSHOT</version>
+    <version>240</version>
     <packaging>pom</packaging>
 
     <name>airbase-root</name>
